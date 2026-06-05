@@ -521,11 +521,6 @@ export default function PcReceiver() {
                 reader.onload = () => {
                   const base64 = reader.result as string;
                   setDecartStyleImage(base64);
-                  fetch(`${API_BASE}/decart/style-image`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ styleImage: base64 }),
-                  });
                 };
                 reader.readAsDataURL(file);
               }}
@@ -544,11 +539,6 @@ export default function PcReceiver() {
                     if (styleFileInputRef.current) {
                       styleFileInputRef.current.value = "";
                     }
-                    fetch(`${API_BASE}/decart/style-image`, {
-                      method: "PUT",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ styleImage: "" }),
-                    });
                   }}
                   className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded hover:bg-red-600"
                   title="Eliminar imagen"
@@ -575,6 +565,30 @@ export default function PcReceiver() {
               Si no usas imagen, describe cómo quieres que se vea el video
             </p>
           </div>
+          <button
+            onClick={async () => {
+              await fetch(`${API_BASE}/decart/config`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  apiKey: decartApiKey,
+                  endpoint: decartEndpoint,
+                  prompt: decartPrompt,
+                }),
+              });
+              await fetch(`${API_BASE}/decart/style-image`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ styleImage: decartStyleImage }),
+              });
+              setDecartStatus("Configuración aplicada");
+              setTimeout(() => setDecartStatus(""), 3000);
+            }}
+            className="w-full bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
+          >
+            <Sparkles className="w-5 h-5" />
+            Aplicar cambios
+          </button>
           {roomId && (
             <div className="space-y-2">
               <label className="text-sm text-gray-400">Sala ID (para el móvil)</label>
