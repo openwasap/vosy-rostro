@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Monitor, Settings, Maximize2, Minimize2, Loader2, Camera, PhoneOff, Image, Video, Sparkles, Play, Volume2 } from "lucide-react";
+import { Monitor, Settings, Maximize2, Minimize2, Loader2, Camera, PhoneOff, Image, Video, Sparkles, Play, Volume2, Upload, Trash2 } from "lucide-react";
 
 const API_BASE = "/api";
 
@@ -14,11 +14,14 @@ export default function PcReceiver() {
   const [showConfig, setShowConfig] = useState(false);
   const [decartPrompt, setDecartPrompt] = useState("Anime style portrait");
   const [decartApiKey, setDecartApiKey] = useState("");
+  const [decartEndpoint, setDecartEndpoint] = useState("wss://api3.decart.ai/v1/stream");
+  const [decartStyleImage, setDecartStyleImage] = useState("");
   const [isDecartConnected, setIsDecartConnected] = useState(false);
   const [showFiltered, setShowFiltered] = useState(true);
   const [decartStatus, setDecartStatus] = useState("");
   const [rtcState, setRtcState] = useState("");
   const [isDecartActive, setIsDecartActive] = useState(false);
+  const [autoApplyFilter, setAutoApplyFilter] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -34,6 +37,7 @@ export default function PcReceiver() {
   const rafRef = useRef<number | null>(null);
   const lastFrameRef = useRef<string | null>(null);
   const isProcessingRef = useRef(false);
+  const styleFileInputRef = useRef<HTMLInputElement>(null);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -54,6 +58,13 @@ export default function PcReceiver() {
         if (data.apiKey && data.apiKey !== "***") {
           setDecartApiKey(data.apiKey);
         }
+        if (data.endpoint) setDecartEndpoint(data.endpoint);
+      })
+      .catch(() => {});
+    fetch(`${API_BASE}/decart/style-image`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.styleImage) setDecartStyleImage(data.styleImage);
       })
       .catch(() => {});
   }, []);
@@ -94,18 +105,24 @@ export default function PcReceiver() {
     try {
       setDecartStatus("Conectando a Decart AI...");
       setIsDecartActive(true);
-      const ws = new WebSocket(`wss://api3.decart.ai/v1/stream?model=lucy-2.1`);
+      const wsUrl = `${decartEndpoint}?model=lucy-2.1`;
+      const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
         setIsDecartConnected(true);
         setDecartStatus("Enviando configuración...");
-        ws.send(JSON.stringify({
+        const config: Record<string, any> = {
           type: "config",
           apiKey: decartApiKey,
-          prompt: decartPrompt,
           enhance: true,
           mirror: "auto",
-        }));
+        };
+        if (decartStyleImage) {
+          config.styleImage = decartStyleImage;
+        } else if (decartPrompt) {
+          config.prompt = decartPrompt;
+        }
+        ws.send(JSON.stringify(config));
       };
 
       ws.onmessage = (event) => {
@@ -141,7 +158,7 @@ export default function PcReceiver() {
       setDecartStatus("Error iniciando conexión Decart");
       console.error("Decart connection error:", err);
     }
-  }, [decartApiKey, decartPrompt]);
+  }, [decartApiKey, decartPrompt, decartEndpoint, decartStyleImage]);
 
   // Frame processing loop
   const startFrameProcessing = useCallback(() => {
@@ -252,6 +269,10 @@ export default function PcReceiver() {
           setIsConnected(true);
           setIsConnecting(false);
           setStatus("Recibiendo video del móvil");
+          // Auto-apply filter if style image is configured
+          if (decartStyleImage && decartApiKey && !isDecartActive) {
+            setAutoApplyFilter(true);
+          }
         }
         if (event.track.kind === "audio" && audioRef.current) {
           audioRef.current.srcObject = stream;
@@ -472,7 +493,77 @@ export default function PcReceiver() {
             </p>
           </div>
           <div className="space-y-2">
-            <label className="text-sm text-gray-400">Prompt de filtro</label>
+            <label className="text-sm text-gray-400">URL del Endpoint</label>
+            <input
+              type="text"
+              value={decartEndpoint}
+              onChange={(e) => setDecartEndpoint(e.target.value)}
+              placeholder="wss://api3.decart.ai/v1/stream"
+              className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none"
+            />
+            <p className="text-xs text-gray-500">
+              Si cambia el endpoint de Decart AI, actualiza aquí
+            </p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm text-gray-400 flex items-center gap-2">
+              <Image className="w-4 h-4" />
+              Imagen de estilo (Filtro)
+            </label>
+            <input
+              ref={styleFileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const base64 = reader.result as string;
+                  setDecartStyleImage(base64);
+                  fetch(`${API_BASE}/decart/style-image`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ styleImage: base64 }),
+                  });
+                };
+                reader.readAsDataURL(file);
+              }}
+              className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 file:mr-4 file:py-1 file:px-2 file:rounded file:border-0 file:bg-purple-600 file:text-white file:text-sm hover:file:bg-purple-500"
+            />
+            {decartStyleImage && (
+              <div className="relative mt-2">
+                <img
+                  src={decartStyleImage}
+                  alt="Estilo de filtro"
+                  className="w-32 h-32 object-cover rounded-lg border border-gray-600"
+                />
+                <button
+                  onClick={() => {
+                    setDecartStyleImage("");
+                    if (styleFileInputRef.current) {
+                      styleFileInputRef.current.value = "";
+                    }
+                    fetch(`${API_BASE}/decart/style-image`, {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ styleImage: "" }),
+                    });
+                  }}
+                  className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded hover:bg-red-600"
+                  title="Eliminar imagen"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+                <p className="text-xs text-gray-400 mt-1">Vista previa del filtro</p>
+              </div>
+            )}
+            <p className="text-xs text-gray-500">
+              Sube una foto que define el estilo visual. El video se transformará para parecerse a esta imagen.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm text-gray-400">Prompt de filtro (alternativa)</label>
             <input
               type="text"
               value={decartPrompt}
@@ -480,6 +571,9 @@ export default function PcReceiver() {
               placeholder="Ej: Anime style portrait"
               className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none"
             />
+            <p className="text-xs text-gray-500">
+              Si no usas imagen, describe cómo quieres que se vea el video
+            </p>
           </div>
           {roomId && (
             <div className="space-y-2">

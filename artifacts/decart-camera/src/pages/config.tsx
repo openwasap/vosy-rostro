@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { ArrowLeft, Save, Key, Type, Sparkles } from "lucide-react";
-import { Link } from "wouter";
+import { useState, useEffect, useRef } from "react";
+import { ArrowLeft, Save, Key, Type, Sparkles, Link, Image, Trash2 } from "lucide-react";
+import { Link as WouterLink } from "wouter";
 
 const API_BASE = "/api";
 
@@ -10,8 +10,11 @@ export default function ConfigPage() {
   const [model, setModel] = useState("lucy-2.1");
   const [mirror, setMirror] = useState("auto");
   const [enhance, setEnhance] = useState(true);
+  const [endpoint, setEndpoint] = useState("wss://api3.decart.ai/v1/stream");
+  const [styleImage, setStyleImage] = useState("");
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Load current config
@@ -22,6 +25,14 @@ export default function ConfigPage() {
         if (data.model) setModel(data.model);
         if (data.mirror) setMirror(data.mirror);
         if (data.enhance !== undefined) setEnhance(data.enhance);
+        if (data.endpoint) setEndpoint(data.endpoint);
+      })
+      .catch(() => {});
+    // Load style image separately
+    fetch(`${API_BASE}/decart/style-image`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.styleImage) setStyleImage(data.styleImage);
       })
       .catch(() => {});
   }, []);
@@ -38,7 +49,13 @@ export default function ConfigPage() {
           model,
           mirror,
           enhance,
+          endpoint,
         }),
+      });
+      await fetch(`${API_BASE}/decart/style-image`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ styleImage }),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -49,16 +66,34 @@ export default function ConfigPage() {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setStyleImage(base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearStyleImage = () => {
+    setStyleImage("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className="min-h-screen w-full bg-gray-950 flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-gray-900">
         <div className="flex items-center gap-2">
-          <Link href="/">
+          <WouterLink href="/">
             <button className="p-2 text-gray-400 hover:text-white transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </button>
-          </Link>
+          </WouterLink>
           <h1 className="text-lg font-semibold text-white">Configuración</h1>
         </div>
       </div>
@@ -70,6 +105,23 @@ export default function ConfigPage() {
           <div className="flex items-center gap-2 mb-4">
             <Sparkles className="w-5 h-5 text-purple-400" />
             <h2 className="text-lg font-semibold text-white">Decart AI</h2>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm text-gray-400 flex items-center gap-2">
+              <Link className="w-4 h-4" />
+              URL del Endpoint
+            </label>
+            <input
+              type="text"
+              value={endpoint}
+              onChange={(e) => setEndpoint(e.target.value)}
+              placeholder="wss://api3.decart.ai/v1/stream"
+              className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none"
+            />
+            <p className="text-xs text-gray-500">
+              Si el endpoint cambia, puedes actualizarlo aquí. Ej: wss://api3.decart.ai/v1/stream
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -91,8 +143,42 @@ export default function ConfigPage() {
 
           <div className="space-y-2">
             <label className="text-sm text-gray-400 flex items-center gap-2">
+              <Image className="w-4 h-4" />
+              Imagen de estilo (Filtro)
+            </label>
+            <p className="text-xs text-gray-500">
+              Sube una foto que define el estilo visual. Decart AI transformará tu video para parecerse a esta imagen.
+            </p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 file:mr-4 file:py-1 file:px-2 file:rounded file:border-0 file:bg-purple-600 file:text-white file:text-sm hover:file:bg-purple-500"
+            />
+            {styleImage && (
+              <div className="relative mt-2">
+                <img
+                  src={styleImage}
+                  alt="Estilo de filtro"
+                  className="w-32 h-32 object-cover rounded-lg border border-gray-600"
+                />
+                <button
+                  onClick={clearStyleImage}
+                  className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded hover:bg-red-600"
+                  title="Eliminar imagen"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+                <p className="text-xs text-gray-400 mt-1">Vista previa del filtro</p>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm text-gray-400 flex items-center gap-2">
               <Type className="w-4 h-4" />
-              Prompt de filtro
+              Prompt de filtro (opcional, alternativa a imagen)
             </label>
             <input
               type="text"
@@ -102,7 +188,7 @@ export default function ConfigPage() {
               className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none"
             />
             <p className="text-xs text-gray-500">
-              Describe cómo quieres que se vea el video filtrado
+              Si no usas imagen, describe cómo quieres que se vea el video
             </p>
           </div>
 
