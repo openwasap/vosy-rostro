@@ -1,0 +1,112 @@
+Toggle Sidebar
+
+Home
+Real-time
+Lucy
+Lucy
+Realtime Video Editing
+Lucy VTON Realtime
+Lucy Virtual Try-On
+Realtime Try-On
+Lucy Restyle Live
+Lucy Restyle
+Realtime Video Restyling
+Non-realtime
+Lucy
+Lucy
+Video to Video
+Lucy VTON
+Lucy Virtual Try-On
+Video to Video
+Lucy Restyle Live
+Lucy Restyle
+Long Video Restyling
+Lucy Image
+Lucy Image
+Image to Image
+Cookbook
+Documentation
+
+Contact us
+Models
+Lucy
+Credit1,000
+
+ra ya
+Lucy icon
+Lucy
+Edit video in realtime with controlled, targeted prompts
+
+Documentation
+Playground
+API
+About
+2 credits per second
+
+TypeScript
+import { createDecartClient, models } from "@decartai/sdk";
+
+const model = models.realtime("lucy-2.1");
+
+// Get user's camera stream with model specifications
+const stream = await navigator.mediaDevices.getUserMedia({
+  audio: true,
+  video: {
+    frameRate: model.fps,
+    width: model.width,
+    height: model.height,
+  }
+});
+
+// Create a client
+const client = createDecartClient({
+  apiKey: "your-api-key-here"
+});
+
+// Connect and edit the video stream
+const realtimeClient = await client.realtime.connect(stream, {
+  model,
+  mirror: "auto",
+  onRemoteStream: (editedStream) => {
+    // Display the edited video
+    const videoElement = document.querySelector("#video-output");
+    videoElement.srcObject = editedStream;
+  }
+});
+
+// set() replaces the full state — prompt + image atomically
+await realtimeClient.set({
+  prompt: "A person wearing a superhero costume",
+  enhance: true,
+  image: "https://example.com/superhero-reference.png",
+});
+
+// Prompt-only update
+await realtimeClient.set({ prompt: "Add sunglasses to the person" });
+
+// setPrompt() also works as a shorthand
+await realtimeClient.setPrompt("Change the person's shirt to red");
+
+// Disconnect when done
+realtimeClient.disconnect();
+
+Available Endpoints
+
+Lucy 2.1
+wss://api3.decart.ai/v1/stream?model=lucy-2.1
+Request Parameters
+Parameter
+Type
+Required
+Description
+prompt
+string
+Yes
+Edit description for live transformation
+stream
+File
+Yes
+Video stream (WebRTC)
+Your realtime output carries an AI-generated watermark. Apply for removal in a couple of clicks.
+
+Apply to remove

@@ -1,0 +1,118 @@
+Toggle Sidebar
+
+Home
+Real-time
+Lucy
+Lucy
+Realtime Video Editing
+Lucy VTON Realtime
+Lucy Virtual Try-On
+Realtime Try-On
+Lucy Restyle Live
+Lucy Restyle
+Realtime Video Restyling
+Non-realtime
+Lucy
+Lucy
+Video to Video
+Lucy VTON
+Lucy Virtual Try-On
+Video to Video
+Lucy Restyle Live
+Lucy Restyle
+Long Video Restyling
+Lucy Image
+Lucy Image
+Image to Image
+Cookbook
+Documentation
+
+Contact us
+Models
+Lucy
+Credit1,000
+
+ra ya
+Lucy icon
+Lucy
+Edit video in realtime with controlled, targeted prompts
+
+Documentation
+Playground
+API
+About
+2 credits per second
+
+Python
+from decart import DecartClient, models, SetInput
+from decart.realtime import RealtimeClient, RealtimeConnectOptions
+from decart.types import ModelState, Prompt
+
+model = models.realtime("lucy-2.1")
+
+# Get user's camera stream
+stream = await get_camera_stream(
+    audio=True,
+    video={
+        "frame_rate": model.fps,
+        "width": model.width,
+        "height": model.height,
+    },
+)
+
+# Create client
+client = DecartClient(api_key="your-api-key-here")
+
+# Connect to realtime API
+realtime_client = await RealtimeClient.connect(
+    base_url=client.base_url,
+    api_key=client.api_key,
+    local_track=stream.video,  # Pass video track
+    options=RealtimeConnectOptions(
+        model=model,
+        on_remote_stream=lambda transformed_stream: (
+            # Handle the transformed video in your app
+            handle_stream(transformed_stream)
+        ),
+        initial_state=ModelState(
+            prompt=Prompt(text="Change the person's shirt to red"),
+        ),
+    ),
+)
+
+# set() replaces the full state — prompt + image atomically
+await realtime_client.set(SetInput(
+    prompt="A person wearing a superhero costume",
+    enhance=True,
+    image="https://example.com/superhero-reference.png",
+))
+
+# Prompt-only update
+await realtime_client.set(SetInput(prompt="Add sunglasses to the person"))
+
+# set_prompt() also works as a shorthand
+await realtime_client.set_prompt("Change the person's hair to blonde")
+
+# Disconnect when done
+await realtime_client.disconnect()
+
+Available Endpoints
+
+Lucy 2.1
+wss://api3.decart.ai/v1/stream?model=lucy-2.1
+Request Parameters
+Parameter
+Type
+Required
+Description
+prompt
+string
+Yes
+Edit description for live transformation
+stream
+File
+Yes
+Video stream (WebRTC)
+Your realtime output carries an AI-generated watermark. Apply for removal in a couple of clicks.
+
+Apply to remove
