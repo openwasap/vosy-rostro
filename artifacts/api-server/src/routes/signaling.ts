@@ -45,7 +45,8 @@ router.post("/rooms", (req, res) => {
 router.get("/rooms/:roomId", (req, res) => {
   const room = rooms.get(req.params.roomId);
   if (!room) {
-    return res.status(404).json({ error: "Room not found" });
+    res.status(404).json({ error: "Room not found" });
+    return;
   }
   
   res.json({
@@ -60,7 +61,8 @@ router.get("/rooms/:roomId", (req, res) => {
 router.post("/rooms/:roomId/offer", (req, res) => {
   const room = rooms.get(req.params.roomId);
   if (!room) {
-    return res.status(404).json({ error: "Room not found" });
+    res.status(404).json({ error: "Room not found" });
+    return;
   }
   
   room.offer = req.body;
@@ -75,11 +77,13 @@ router.post("/rooms/:roomId/offer", (req, res) => {
 router.get("/rooms/:roomId/offer", (req, res) => {
   const room = rooms.get(req.params.roomId);
   if (!room) {
-    return res.status(404).json({ error: "Room not found" });
+    res.status(404).json({ error: "Room not found" });
+    return;
   }
   
   if (!room.offer) {
-    return res.json({ success: false, message: "No offer yet" });
+    res.json({ success: false, message: "No offer yet" });
+    return;
   }
   
   res.json({ success: true, message: "Offer available", ...room.offer });
@@ -88,7 +92,8 @@ router.get("/rooms/:roomId/offer", (req, res) => {
 router.post("/rooms/:roomId/answer", (req, res) => {
   const room = rooms.get(req.params.roomId);
   if (!room) {
-    return res.status(404).json({ error: "Room not found" });
+    res.status(404).json({ error: "Room not found" });
+    return;
   }
   
   room.answer = req.body;
@@ -103,11 +108,13 @@ router.post("/rooms/:roomId/answer", (req, res) => {
 router.get("/rooms/:roomId/answer", (req, res) => {
   const room = rooms.get(req.params.roomId);
   if (!room) {
-    return res.status(404).json({ error: "Room not found" });
+    res.status(404).json({ error: "Room not found" });
+    return;
   }
   
   if (!room.answer) {
-    return res.json({ success: false, message: "No answer yet" });
+    res.json({ success: false, message: "No answer yet" });
+    return;
   }
   
   res.json({ success: true, message: "Answer available", ...room.answer });
@@ -116,7 +123,8 @@ router.get("/rooms/:roomId/answer", (req, res) => {
 router.post("/rooms/:roomId/ice", (req, res) => {
   const room = rooms.get(req.params.roomId);
   if (!room) {
-    return res.status(404).json({ error: "Room not found" });
+    res.status(404).json({ error: "Room not found" });
+    return;
   }
   
   const { candidate, sdpMid, sdpMLineIndex, source } = req.body;
@@ -133,7 +141,8 @@ router.post("/rooms/:roomId/ice", (req, res) => {
 router.get("/rooms/:roomId/ice/mobile", (req, res) => {
   const room = rooms.get(req.params.roomId);
   if (!room) {
-    return res.status(404).json({ error: "Room not found" });
+    res.status(404).json({ error: "Room not found" });
+    return;
   }
   
   res.json({ candidates: room.mobileIce });
@@ -142,7 +151,8 @@ router.get("/rooms/:roomId/ice/mobile", (req, res) => {
 router.get("/rooms/:roomId/ice/pc", (req, res) => {
   const room = rooms.get(req.params.roomId);
   if (!room) {
-    return res.status(404).json({ error: "Room not found" });
+    res.status(404).json({ error: "Room not found" });
+    return;
   }
   
   res.json({ candidates: room.pcIce });

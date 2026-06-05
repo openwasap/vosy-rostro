@@ -1,62 +1,56 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Camera, PhoneOff, Loader2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Camera, PhoneOff, Loader2, Keyboard, ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
 
 const API_BASE = "/api";
 
 export default function MobileSender() {
   const [roomId, setRoomId] = useState("");
+  const [inputRoomId, setInputRoomId] = useState("");
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("Esperando...");
+  const [facingMode, setFacingMode] = useState("user");
+  const [isMuted, setIsMuted] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const iceCandidatesRef = useRef<RTCIceCandidate[]>([]);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const createRoom = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/signaling/rooms`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Mobile Sender" }),
-      });
-      const data = await res.json();
-      if (data.id) {
-        setRoomId(data.id);
-        return data.id;
-      }
-      throw new Error("Failed to create room");
-    } catch (err: any) {
-      setError(err.message || "Error creating room");
-      return null;
-    }
-  };
+  const icePollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startConnection = async () => {
+    const targetRoomId = inputRoomId.trim();
+    if (!targetRoomId) {
+      setError("Ingresa el ID de la sala creada en el PC");
+      return;
+    }
+
     setIsConnecting(true);
     setError("");
     setStatus("Solicitando cámara...");
+    setRoomId(targetRoomId);
 
     try {
+      // Verify room exists
+      const roomCheck = await fetch(`${API_BASE}/signaling/rooms/${targetRoomId}`);
+      if (!roomCheck.ok) {
+        setError("Sala no encontrada. Asegúrate de que el PC creó la sala correctamente.");
+        setIsConnecting(false);
+        return;
+      }
+
       // Get camera stream
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720, facingMode: "user" },
+        video: { width: 1280, height: 720, facingMode: facingMode },
         audio: true,
       });
       streamRef.current = stream;
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-      }
-
-      setStatus("Creando sala...");
-      const roomId = await createRoom();
-      if (!roomId) {
-        setIsConnecting(false);
-        return;
       }
 
       setStatus("Configurando conexión WebRTC...");
@@ -67,6 +61,15 @@ export default function MobileSender() {
         ],
       });
       pcRef.current = pc;
+
+      // Track connection state
+      pc.onconnectionstatechange = () => {
+        const state = pc.connectionState;
+        if (state === "failed" || state === "disconnected") {
+          setIsConnected(false);
+          setStatus("Conexión perdida");
+        }
+      };
 
       // Add tracks to peer connection
       stream.getTracks().forEach((track) => {
@@ -89,7 +92,7 @@ export default function MobileSender() {
 
       setStatus("Enviando oferta...");
       // Send offer to server
-      await fetch(`${API_BASE}/signaling/rooms/${roomId}/offer`, {
+      await fetch(`${API_BASE}/signaling/rooms/${targetRoomId}/offer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -100,7 +103,7 @@ export default function MobileSender() {
 
       // Send ICE candidates
       for (const candidate of iceCandidatesRef.current) {
-        await fetch(`${API_BASE}/signaling/rooms/${roomId}/ice`, {
+        await fetch(`${API_BASE}/signaling/rooms/${targetRoomId}/ice`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -115,16 +118,22 @@ export default function MobileSender() {
       setStatus("Esperando respuesta del PC...");
       // Poll for answer
       const pollAnswer = async () => {
-        const res = await fetch(`${API_BASE}/signaling/rooms/${roomId}/answer`);
-        const data = await res.json();
-        if (data.success && data.type === "answer") {
-          await pc.setRemoteDescription(new RTCSessionDescription(data));
-          setIsConnected(true);
-          setIsConnecting(false);
-          setStatus("Conectado! Transmisión activa.");
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current);
+        try {
+          const res = await fetch(`${API_BASE}/signaling/rooms/${targetRoomId}/answer`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.success && data.type === "answer") {
+            await pc.setRemoteDescription(new RTCSessionDescription(data));
+            setIsConnected(true);
+            setIsConnecting(false);
+            setStatus("Conectado! Transmisión activa.");
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current);
+              pollingRef.current = null;
+            }
           }
+        } catch (e) {
+          // Silently ignore polling errors
         }
       };
 
@@ -133,17 +142,22 @@ export default function MobileSender() {
 
       // Also poll for PC ICE candidates
       const pollIce = async () => {
-        const res = await fetch(`${API_BASE}/signaling/rooms/${roomId}/ice/pc`);
-        const data = await res.json();
-        for (const candidate of data.candidates) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch (e) {
-            // Ignore errors
+        try {
+          const res = await fetch(`${API_BASE}/signaling/rooms/${targetRoomId}/ice/pc`);
+          if (!res.ok) return;
+          const data = await res.json();
+          for (const candidate of data.candidates) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (e) {
+              // Ignore errors
+            }
           }
+        } catch (e) {
+          // Silently ignore polling errors
         }
       };
-      setInterval(pollIce, 3000);
+      icePollingRef.current = setInterval(pollIce, 3000);
     } catch (err: any) {
       setError(err.message || "Error iniciando conexión");
       setIsConnecting(false);
@@ -164,12 +178,39 @@ export default function MobileSender() {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
+    if (icePollingRef.current) {
+      clearInterval(icePollingRef.current);
+      icePollingRef.current = null;
+    }
     setIsConnected(false);
     setIsConnecting(false);
     setRoomId("");
+    setInputRoomId("");
     setStatus("Desconectado");
     if (videoRef.current) {
       videoRef.current.srcObject = null;
+    }
+  };
+
+  const toggleMute = () => {
+    if (streamRef.current) {
+      const audioTracks = streamRef.current.getAudioTracks();
+      audioTracks.forEach((track) => {
+        track.enabled = isMuted;
+      });
+      setIsMuted(!isMuted);
+    }
+  };
+
+  const toggleCamera = () => {
+    const newMode = facingMode === "user" ? "environment" : "user";
+    setFacingMode(newMode);
+    // Restart connection with new facing mode
+    if (isConnected || isConnecting) {
+      stopConnection();
+      setTimeout(() => {
+        setFacingMode(newMode);
+      }, 500);
     }
   };
 
@@ -189,6 +230,26 @@ export default function MobileSender() {
           </p>
         </div>
 
+        {/* Room ID input */}
+        {!isConnected && !isConnecting && (
+          <div className="bg-gray-900 rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Keyboard className="w-4 h-4 text-gray-400" />
+              <label className="text-sm text-gray-400">ID de la Sala del PC</label>
+            </div>
+            <input
+              type="text"
+              value={inputRoomId}
+              onChange={(e) => setInputRoomId(e.target.value)}
+              placeholder="Ej: abc123"
+              className="w-full bg-gray-800 text-white px-3 py-2 rounded-lg border border-gray-700 focus:border-green-500 focus:outline-none font-mono text-sm"
+            />
+            <p className="text-xs text-gray-500">
+              Escribe el ID que aparece en el PC después de hacer &quot;Iniciar recepción&quot;
+            </p>
+          </div>
+        )}
+
         {roomId && (
           <div className="bg-gray-900 rounded-lg p-4 text-center">
             <p className="text-xs text-gray-400 mb-1">Sala ID:</p>
@@ -196,7 +257,7 @@ export default function MobileSender() {
           </div>
         )}
 
-        <div className="relative aspect-video bg-gray-800 rounded-lg overflow-hidden">
+        <div className="relative aspect-[3/4] bg-gray-800 rounded-lg overflow-hidden max-h-[60vh]">
           <video
             ref={videoRef}
             autoPlay
@@ -220,6 +281,22 @@ export default function MobileSender() {
           {isConnected && (
             <div className="absolute top-2 right-2 bg-green-500/80 text-white text-xs px-2 py-1 rounded">
               En vivo
+            </div>
+          )}
+          {isConnected && (
+            <div className="absolute top-2 left-2 flex gap-2">
+              <button
+                onClick={toggleMute}
+                className="bg-black/50 text-white text-xs px-2 py-1 rounded"
+              >
+                {isMuted ? "Mudo" : "Audio on"}
+              </button>
+              <button
+                onClick={toggleCamera}
+                className="bg-black/50 text-white text-xs px-2 py-1 rounded"
+              >
+                {facingMode === "user" ? "Frontal" : "Trasera"}
+              </button>
             </div>
           )}
         </div>
@@ -256,10 +333,20 @@ export default function MobileSender() {
         )}
 
         <div className="text-center text-xs text-gray-500 mt-8">
-          <p>1. Abre esta página en tu celular</p>
-          <p>2. Abre la página principal en tu PC</p>
-          <p>3. Inicia la transmisión</p>
-          <p>4. El PC recibirá tu cámara y aplicará filtros</p>
+          <p>1. Abre la página principal en tu PC</p>
+          <p>2. En el PC, haz clic en &quot;Iniciar recepción&quot;</p>
+          <p>3. Copia el ID de la sala que aparece en el PC</p>
+          <p>4. Escribe el ID aquí y presiona &quot;Iniciar transmisión&quot;</p>
+          <p>5. El PC recibirá tu cámara y audio</p>
+        </div>
+
+        <div className="text-center">
+          <Link href="/">
+            <button className="text-gray-500 text-xs hover:text-gray-300 flex items-center gap-1 justify-center mx-auto">
+              <ArrowLeft className="w-3 h-3" />
+              Volver al PC
+            </button>
+          </Link>
         </div>
       </div>
     </div>
