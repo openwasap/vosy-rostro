@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "29NwLz32FCWjL9YnC7-cv"
+uri = "file://docs/DECART_AI_CAMERA_COMPLETE_GUIDE.md"
+type = "text"
+title = "Guía Técnica Completa - Decart AI Camera"
