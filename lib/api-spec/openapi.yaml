@@ -1,15 +1,18 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: API specification for Decart AI Camera
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: signaling
+    description: WebRTC signaling operations
+  - name: decart
+    description: Decart AI integration
 paths:
   /healthz:
     get:
@@ -24,6 +27,284 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /signaling/rooms:
+    post:
+      operationId: createRoom
+      tags: [signaling]
+      summary: Create a WebRTC signaling room
+      description: Creates a room for mobile-to-PC connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomInput"
+      responses:
+        "201":
+          description: Room created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /signaling/rooms/{roomId}:
+    get:
+      operationId: getRoom
+      tags: [signaling]
+      summary: Get room details
+      description: Get room details and signaling status
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Room details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "404":
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /signaling/rooms/{roomId}/offer:
+    post:
+      operationId: postOffer
+      tags: [signaling]
+      summary: Post WebRTC offer
+      description: Post SDP offer from mobile
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignalingMessage"
+      responses:
+        "200":
+          description: Offer accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalingResponse"
+        "404":
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      operationId: getOffer
+      tags: [signaling]
+      summary: Get WebRTC offer
+      description: Get the offer from mobile
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Offer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalingResponse"
+        "404":
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /signaling/rooms/{roomId}/answer:
+    post:
+      operationId: postAnswer
+      tags: [signaling]
+      summary: Post WebRTC answer
+      description: Post SDP answer from PC
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignalingMessage"
+      responses:
+        "200":
+          description: Answer accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalingResponse"
+        "404":
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      operationId: getAnswer
+      tags: [signaling]
+      summary: Get WebRTC answer
+      description: Get the answer from PC
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalingResponse"
+        "404":
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /signaling/rooms/{roomId}/ice:
+    post:
+      operationId: postIceCandidate
+      tags: [signaling]
+      summary: Post ICE candidate
+      description: Post ICE candidate from either peer
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IceCandidate"
+      responses:
+        "200":
+          description: ICE candidate accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalingResponse"
+        "404":
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /signaling/rooms/{roomId}/ice/pc:
+    get:
+      operationId: getPcIceCandidates
+      tags: [signaling]
+      summary: Get PC ICE candidates
+      description: Get ICE candidates for the PC
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ICE candidates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IceCandidatesList"
+        "404":
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /signaling/rooms/{roomId}/ice/mobile:
+    get:
+      operationId: getMobileIceCandidates
+      tags: [signaling]
+      summary: Get mobile ICE candidates
+      description: Get ICE candidates for the mobile
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ICE candidates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IceCandidatesList"
+        "404":
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /decart/config:
+    get:
+      operationId: getDecartConfig
+      tags: [decart]
+      summary: Get Decart AI configuration
+      description: Get Decart AI API endpoint and available models
+      responses:
+        "200":
+          description: Decart configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecartConfig"
+    put:
+      operationId: setDecartConfig
+      tags: [decart]
+      summary: Set Decart AI configuration
+      description: Set Decart AI API key and model
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecartConfigInput"
+      responses:
+        "200":
+          description: Config updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecartConfig"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +314,121 @@ components:
           type: string
       required:
         - status
-
+    Room:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [waiting, connected, closed]
+        createdAt:
+          type: string
+          format: date-time
+        mobileConnected:
+          type: boolean
+        pcConnected:
+          type: boolean
+      required:
+        - id
+        - status
+        - createdAt
+        - mobileConnected
+        - pcConnected
+    RoomInput:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+    SignalingMessage:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [offer, answer]
+        sdp:
+          type: string
+      required:
+        - type
+        - sdp
+    SignalingResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+        - message
+    IceCandidate:
+      type: object
+      properties:
+        candidate:
+          type: string
+        sdpMid:
+          type: string
+        sdpMLineIndex:
+          type: integer
+      required:
+        - candidate
+        - sdpMid
+        - sdpMLineIndex
+    IceCandidatesList:
+      type: object
+      properties:
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/IceCandidate"
+      required:
+        - candidates
+    DecartConfig:
+      type: object
+      properties:
+        apiKey:
+          type: string
+        model:
+          type: string
+          enum: [lucy-2.1]
+        endpoint:
+          type: string
+        mirror:
+          type: string
+          enum: [auto, true, false]
+        enhance:
+          type: boolean
+        prompt:
+          type: string
+      required:
+        - model
+        - endpoint
+        - mirror
+        - enhance
+    DecartConfigInput:
+      type: object
+      properties:
+        apiKey:
+          type: string
+        model:
+          type: string
+          enum: [lucy-2.1]
+        mirror:
+          type: string
+          enum: [auto, true, false]
+        enhance:
+          type: boolean
+        prompt:
+          type: string
+      required:
+        - apiKey
+        - prompt
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

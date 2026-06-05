@@ -5,7 +5,9 @@
  * API specification for Decart AI Camera
  * OpenAPI spec version: 0.1.0
  */
+import type { SignalingMessageType } from './signalingMessageType';
 
-export interface HealthStatus {
-  status: string;
+export interface SignalingMessage {
+  type: SignalingMessageType;
+  sdp: string;
 }

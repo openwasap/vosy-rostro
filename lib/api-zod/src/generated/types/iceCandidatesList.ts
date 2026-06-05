@@ -5,7 +5,8 @@
  * API specification for Decart AI Camera
  * OpenAPI spec version: 0.1.0
  */
+import type { IceCandidate } from './iceCandidate';
 
-export interface HealthStatus {
-  status: string;
+export interface IceCandidatesList {
+  candidates: IceCandidate[];
 }
