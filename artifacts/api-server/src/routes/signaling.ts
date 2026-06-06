@@ -16,9 +16,22 @@ const rooms = new Map<string, {
   pcIce: any[];
 }>();
 
+// Generate a short, easy-to-type 3-char alphanumeric ID
+// Excludes visually ambiguous chars: 0/O, 1/I/l
+function generateRoomId(): string {
+  const chars = "abcdefghjkmnpqrstuvwxyz23456789";
+  let id = "";
+  for (let i = 0; i < 3; i++) {
+    id += chars[Math.floor(Math.random() * chars.length)];
+  }
+  // Ensure uniqueness
+  if (rooms.has(id)) return generateRoomId();
+  return id;
+}
+
 router.post("/rooms", (req, res) => {
   const { name } = req.body;
-  const roomId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+  const roomId = generateRoomId();
   
   rooms.set(roomId, {
     id: roomId,
