@@ -79,7 +79,6 @@ router.post("/process-frame", async (req, res) => {
     const imageBuffer = Buffer.from(base64Data, "base64");
 
     const formData = new FormData();
-    formData.append("model", "lucy-pro-v2v");
     formData.append("prompt", prompt || decartConfig.prompt || "Enhance and stylize");
     formData.append("data", new Blob([imageBuffer], { type: "image/jpeg" }), "frame.jpg");
     if (decartConfig.styleImage) {
@@ -88,7 +87,8 @@ router.post("/process-frame", async (req, res) => {
       formData.append("reference_image", new Blob([refBuf], { type: "image/jpeg" }), "style.jpg");
     }
 
-    const submitRes = await fetch("https://api.decart.ai/v1/queue/submit", {
+    // Correct endpoint: POST /v1/jobs/{model} (lucy-image-2 for image-to-image)
+    const submitRes = await fetch("https://api.decart.ai/v1/jobs/lucy-image-2", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}` },
       body: formData,
@@ -100,31 +100,45 @@ router.post("/process-frame", async (req, res) => {
       return;
     }
 
-    const job = await submitRes.json() as { id: string; status?: string };
-    const jobId = job.id;
+    const job = await submitRes.json() as { job_id: string; status?: string };
+    const jobId = job.job_id;
 
-    // Poll for result (max 30s)
+    // Poll for result: GET /v1/jobs/{job_id} (max 30s)
     const start = Date.now();
     while (Date.now() - start < 30000) {
       await new Promise(r => setTimeout(r, 2000));
-      const pollRes = await fetch(`https://api.decart.ai/v1/queue/${jobId}`, {
+      const pollRes = await fetch(`https://api.decart.ai/v1/jobs/${jobId}`, {
         headers: { Authorization: `Bearer ${key}` },
       });
       const result = await pollRes.json() as {
+        job_id: string;
         status: string;
-        output_url?: string;
         error?: string;
       };
 
-      if (result.status === "completed" && result.output_url) {
-        res.json({ status: "completed", outputUrl: result.output_url, jobId });
+      if (result.status === "completed") {
+        // GET /v1/jobs/{job_id}/content returns the result blob
+        const contentRes = await fetch(`https://api.decart.ai/v1/jobs/${jobId}/content`, {
+          headers: { Authorization: `Bearer ${key}` },
+        });
+        if (!contentRes.ok) {
+          res.status(500).json({ error: "Failed to fetch job content" });
+          return;
+        }
+        const blob = await contentRes.arrayBuffer();
+        const base64 = Buffer.from(blob).toString("base64");
+        const contentType = contentRes.headers.get("content-type") || "image/jpeg";
+        res.json({
+          status: "completed",
+          outputDataUrl: `data:${contentType};base64,${base64}`,
+          jobId,
+        });
         return;
       }
       if (result.status === "failed") {
         res.status(500).json({ error: result.error || "Job failed" });
         return;
       }
-      res.flushHeaders?.();
     }
 
     res.status(408).json({ error: "Timeout waiting for Decart result", jobId });

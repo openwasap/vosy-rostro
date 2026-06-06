@@ -46,7 +46,6 @@ export default function PcReceiver() {
   // ── Refs ──
   const rawVideoRef = useRef<HTMLVideoElement>(null);
   const filteredVideoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
   const bridgeCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -152,19 +151,30 @@ export default function PcReceiver() {
           ? { prompt: { text: prompt, enhance: true } }
           : undefined,
         onRemoteStream: (edited) => {
-          if (filteredVideoRef.current) filteredVideoRef.current.srcObject = edited;
+          if (filteredVideoRef.current) {
+            filteredVideoRef.current.srcObject = edited;
+            filteredVideoRef.current.muted = true;
+          }
           setHasFilteredStream(true);
           setDecartPhase("active");
           setDecartMsg("✅ Filtro en tiempo real activo · 30fps · Lucy 2.1");
         },
         onConnectionChange: (state) => {
+          if (state === "connected") {
+            setDecartMsg("🔗 Conectado con Decart AI — esperando primer frame filtrado...");
+          }
+          if (state === "generating") {
+            setDecartPhase("active");
+            setDecartMsg("🎨 Generando filtro en tiempo real...");
+          }
           if (state === "disconnected") {
             setDecartPhase("idle");
             setHasFilteredStream(false);
             setDecartMsg("Decart desconectado");
           }
           if (state === "reconnecting") {
-            setDecartMsg("Reconectando con Decart AI...");
+            setDecartPhase("connecting");
+            setDecartMsg("🔄 Reconectando con Decart AI...");
           }
         },
       });
@@ -203,9 +213,9 @@ export default function PcReceiver() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ frame, prompt, apiKey }),
         });
-        const data = await res.json() as { status?: string; outputUrl?: string; jobId?: string; error?: string };
-        if (data.status === "completed" && data.outputUrl) {
-          setBatchImageUrl(data.outputUrl);
+        const data = await res.json() as { status?: string; outputDataUrl?: string; jobId?: string; error?: string };
+        if (data.status === "completed" && data.outputDataUrl) {
+          setBatchImageUrl(data.outputDataUrl);
           setPythonJobId(data.jobId ?? "");
           setDecartMsg(`✅ Frame procesado (job: ${data.jobId?.slice(0, 8)})`);
         } else if (data.error) {
@@ -296,22 +306,49 @@ export default function PcReceiver() {
         }
       };
 
+      // Accumulate all tracks from the mobile stream
+      const incomingStream = new MediaStream();
+      let videoReady = false;
+
       pc.ontrack = (event) => {
-        const stream = event.streams[0];
-        if (event.track.kind === "audio") {
-          receivedAudioTracks.current.push(event.track);
-          if (audioRef.current) audioRef.current.srcObject = stream;
+        const track = event.track;
+        incomingStream.addTrack(track);
+
+        if (track.kind === "audio") {
+          receivedAudioTracks.current.push(track);
         }
-        if (event.track.kind === "video" && rawVideoRef.current) {
-          rawVideoRef.current.srcObject = stream;
+
+        if (track.kind === "video" && !videoReady) {
+          videoReady = true;
           setIsConnected(true);
           setIsConnecting(false);
           setRtcStatus("✅ Recibiendo video del móvil");
 
-          rawVideoRef.current.onloadedmetadata = async () => {
-            const videoEl = rawVideoRef.current!;
+          // Assign the full stream (video+audio) to the raw video element
+          // so audio plays through the video element — no separate <audio> needed
+          if (rawVideoRef.current) {
+            rawVideoRef.current.srcObject = incomingStream;
+            rawVideoRef.current.muted = false;
+          }
+
+          // Wait for all tracks to arrive before starting bridge
+          setTimeout(async () => {
+            const videoEl = rawVideoRef.current;
+            if (!videoEl) return;
+
+            // Ensure video element has all tracks
+            incomingStream.getTracks().forEach(t => {
+              if (!rawVideoRef.current?.srcObject) return;
+              const existing = (rawVideoRef.current.srcObject as MediaStream).getTracks();
+              if (!existing.find(e => e.id === t.id)) {
+                (rawVideoRef.current.srcObject as MediaStream).addTrack(t);
+              }
+            });
+
+            // Use only the audio tracks already collected for the bridge (canvas stream)
+            // so Decart SDK gets video+audio but we don't double-play audio
             const localStream = startCanvasBridge(videoEl, receivedAudioTracks.current);
-            // Auto-connect Decart if API key is available
+
             if (apiKey.trim()) {
               if (sdkMode === "typescript" && localStream) {
                 await connectDecartTS(localStream);
@@ -321,7 +358,7 @@ export default function PcReceiver() {
             } else {
               setDecartMsg("⚠️ Video listo — ingresa tu API Key y pulsa 'Aplicar filtro IA'");
             }
-          };
+          }, 800);
         }
       };
 
@@ -384,7 +421,6 @@ export default function PcReceiver() {
     receivedAudioTracks.current = [];
     if (rawVideoRef.current) rawVideoRef.current.srcObject = null;
     if (filteredVideoRef.current) filteredVideoRef.current.srcObject = null;
-    if (audioRef.current) audioRef.current.srcObject = null;
   };
 
   const isDecartActive = decartPhase === "active";
@@ -392,8 +428,7 @@ export default function PcReceiver() {
 
   return (
     <div className="min-h-screen w-full bg-black flex flex-col">
-      {/* Hidden elements */}
-      <audio ref={audioRef} autoPlay className="hidden" />
+      {/* Hidden elements — NOTE: audio plays through rawVideoRef, no separate <audio> needed */}
       <canvas ref={bridgeCanvasRef} className="hidden" />
 
       {/* ── Header ── */}
