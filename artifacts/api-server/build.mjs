@@ -3,14 +3,62 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { cp, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
+const frontendDir = path.resolve(artifactDir, "../decart-camera");
+
+function execCommand(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = execFile(command, args, {
+      stdio: "inherit",
+      ...options,
+    });
+
+    child.on("error", (err) => reject(err));
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Command ${command} ${args.join(" ")} exited with ${code}`));
+      }
+    });
+  });
+}
+
+async function buildFrontend() {
+  const env = {
+    ...process.env,
+    PORT: "4173",
+    BASE_PATH: "/",
+  };
+
+  console.log("Building decart-camera frontend...");
+  await execCommand("pnpm", ["install"], {
+    cwd: frontendDir,
+    env,
+  });
+  await execCommand("pnpm", ["run", "build"], {
+    cwd: frontendDir,
+    env,
+  });
+}
+
+async function copyFrontendAssets() {
+  const sourceDir = path.resolve(frontendDir, "dist/public");
+  const targetDir = path.resolve(artifactDir, "dist/public");
+
+  await rm(targetDir, { recursive: true, force: true });
+  await cp(sourceDir, targetDir, { recursive: true });
+}
 
 async function buildAll() {
+  await buildFrontend();
+
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
 
@@ -104,7 +152,7 @@ async function buildAll() {
     sourcemap: "linked",
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
-      esbuildPluginPino({ transports: ["pino-pretty"] })
+      esbuildPluginPino({ transports: ["pino-pretty"] }),
     ],
     // Make sure packages that are cjs only (e.g. express) but are bundled continue to work in our esm output file
     banner: {
@@ -118,6 +166,8 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  await copyFrontendAssets();
 }
 
 buildAll().catch((err) => {

@@ -27,30 +27,6 @@
         "repo": "",
         "rootDirectory": "artifacts/api-server"
       }
-    },
-    {
-      "name": "decart-camera",
-      "build": {
-        "builder": "NIXPACKS",
-        "buildCommand": "cd artifacts/decart-camera && pnpm install && pnpm run build"
-      },
-      "start": {
-        "command": "cd artifacts/decart-camera && pnpm run serve"
-      },
-      "env": {
-        "PORT": {
-          "required": true,
-          "default": "3000"
-        },
-        "BASE_PATH": {
-          "required": false,
-          "default": "/"
-        }
-      },
-      "source": {
-        "repo": "",
-        "rootDirectory": "artifacts/decart-camera"
-      }
     }
   ],
   "variables": {
