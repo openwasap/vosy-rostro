@@ -1,0 +1,44 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK with EAS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: artifacts/decart-mobile
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Build APK (Android)
+        working-directory: artifacts/decart-mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_DOMAIN: ${{ secrets.EXPO_PUBLIC_DOMAIN }}
+        run: eas build --platform android --profile preview --non-interactive --no-wait
+
+      - name: Build status
+        run: |
+          echo "✅ Build enviado a EAS. Revisa el progreso en https://expo.dev"
+          echo "El APK estará disponible en tu dashboard de Expo cuando termine (~10 min)"
