@@ -49,7 +49,14 @@ export default function MobileSender() {
           height: { ideal: VIDEO_HEIGHT },
           frameRate: { ideal: VIDEO_FPS, max: VIDEO_FPS },
         },
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+          sampleRate: 48000,
+          sampleSize: 16,
+        },
       });
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
@@ -73,7 +80,14 @@ export default function MobileSender() {
           height: { ideal: VIDEO_HEIGHT },
           frameRate: { ideal: VIDEO_FPS, max: VIDEO_FPS },
         },
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+          sampleRate: 48000,
+          sampleSize: 16,
+        },
       });
       streamRef.current = newStream;
       if (videoRef.current) videoRef.current.srcObject = newStream;

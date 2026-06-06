@@ -57,7 +57,6 @@ export default function PcReceiver() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const icePollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const styleFileRef = useRef<HTMLInputElement>(null);
-  const receivedAudioTracks = useRef<MediaStreamTrack[]>([]);
 
   // ── Load saved config ──
   useEffect(() => {
@@ -101,7 +100,10 @@ export default function PcReceiver() {
   // ── Canvas bridge ──
   // Browsers block forwarding a remote WebRTC track to another WebRTC connection.
   // Solution: draw received video to hidden canvas → canvas.captureStream() → local MediaStream → SDK
-  const startCanvasBridge = useCallback((videoEl: HTMLVideoElement, audioTracks: MediaStreamTrack[]): MediaStream | null => {
+  // NOTE: We deliberately do NOT add audio tracks to the Decart bridge stream.
+  // Decart only processes video; passing audio causes latency and potential feedback loops.
+  // Audio is played exclusively through rawVideoRef (the received WebRTC video element).
+  const startCanvasBridge = useCallback((videoEl: HTMLVideoElement): MediaStream | null => {
     const canvas = bridgeCanvasRef.current;
     if (!canvas) return null;
     if (bridgeRafRef.current) cancelAnimationFrame(bridgeRafRef.current);
@@ -117,8 +119,8 @@ export default function PcReceiver() {
     };
     bridgeRafRef.current = requestAnimationFrame(draw);
 
+    // Video-only stream to Decart — no audio
     const localStream = canvas.captureStream(30);
-    audioTracks.forEach(t => localStream.addTrack(t));
     bridgeStreamRef.current = localStream;
     return localStream;
   }, []);
@@ -276,7 +278,6 @@ export default function PcReceiver() {
     setRtcError("");
     setRtcStatus("Creando sala...");
     iceCandidatesRef.current = [];
-    receivedAudioTracks.current = [];
 
     try {
       const res = await fetch(`${API_BASE}/signaling/rooms`, {
@@ -306,48 +307,39 @@ export default function PcReceiver() {
         }
       };
 
-      // Accumulate all tracks from the mobile stream
+      // Single MediaStream that accumulates all tracks from the mobile peer
+      // Adding tracks to a live MediaStream automatically starts audio/video playback
       const incomingStream = new MediaStream();
       let videoReady = false;
 
       pc.ontrack = (event) => {
-        const track = event.track;
-        incomingStream.addTrack(track);
+        // Add every arriving track (audio or video) to the single stream
+        incomingStream.addTrack(event.track);
 
-        if (track.kind === "audio") {
-          receivedAudioTracks.current.push(track);
-        }
-
-        if (track.kind === "video" && !videoReady) {
+        if (event.track.kind === "video" && !videoReady) {
           videoReady = true;
           setIsConnected(true);
           setIsConnecting(false);
           setRtcStatus("✅ Recibiendo video del móvil");
 
-          // Assign the full stream (video+audio) to the raw video element
-          // so audio plays through the video element — no separate <audio> needed
+          // Assign the combined stream to rawVideoRef — audio plays here, nowhere else
           if (rawVideoRef.current) {
             rawVideoRef.current.srcObject = incomingStream;
+            // Unmute: autoplay with audio is allowed since user already clicked a button
             rawVideoRef.current.muted = false;
+            rawVideoRef.current.play().catch(() => {
+              // Autoplay blocked — keep muted so browser allows it, then let user unmute
+              if (rawVideoRef.current) rawVideoRef.current.muted = true;
+            });
           }
 
-          // Wait for all tracks to arrive before starting bridge
+          // Small delay so audio track can arrive and attach before the bridge starts
           setTimeout(async () => {
             const videoEl = rawVideoRef.current;
             if (!videoEl) return;
 
-            // Ensure video element has all tracks
-            incomingStream.getTracks().forEach(t => {
-              if (!rawVideoRef.current?.srcObject) return;
-              const existing = (rawVideoRef.current.srcObject as MediaStream).getTracks();
-              if (!existing.find(e => e.id === t.id)) {
-                (rawVideoRef.current.srcObject as MediaStream).addTrack(t);
-              }
-            });
-
-            // Use only the audio tracks already collected for the bridge (canvas stream)
-            // so Decart SDK gets video+audio but we don't double-play audio
-            const localStream = startCanvasBridge(videoEl, receivedAudioTracks.current);
+            // Video-only stream to Decart — audio plays exclusively through rawVideoRef
+            const localStream = startCanvasBridge(videoEl);
 
             if (apiKey.trim()) {
               if (sdkMode === "typescript" && localStream) {
@@ -358,7 +350,7 @@ export default function PcReceiver() {
             } else {
               setDecartMsg("⚠️ Video listo — ingresa tu API Key y pulsa 'Aplicar filtro IA'");
             }
-          }, 800);
+          }, 500);
         }
       };
 
@@ -418,7 +410,6 @@ export default function PcReceiver() {
     setHasFilteredStream(false); setDecartPhase("idle"); setDecartMsg("");
     setRoomId(""); setRtcStatus("Listo para iniciar"); setRtcError("");
     setBatchImageUrl(""); setPythonJobId("");
-    receivedAudioTracks.current = [];
     if (rawVideoRef.current) rawVideoRef.current.srcObject = null;
     if (filteredVideoRef.current) filteredVideoRef.current.srcObject = null;
   };
@@ -604,16 +595,16 @@ export default function PcReceiver() {
 
       {/* ── Video Area ── */}
       <div ref={containerRef} className="flex-1 relative bg-black overflow-hidden" style={{ minHeight: "220px" }}>
-        {/* Raw stream (from mobile) */}
+        {/* Raw stream (from mobile) — carries audio, never muted */}
         <video ref={rawVideoRef} autoPlay playsInline
           className={`w-full h-full object-contain absolute inset-0 transition-opacity ${
             (hasFilteredStream && showFiltered && sdkMode === "typescript") || (batchImageUrl && showFiltered && sdkMode === "python")
               ? "opacity-0" : "opacity-100"
           }`} />
 
-        {/* TypeScript mode: filtered stream */}
+        {/* TypeScript mode: filtered stream — always muted (audio comes from rawVideoRef) */}
         {sdkMode === "typescript" && (
-          <video ref={filteredVideoRef} autoPlay playsInline
+          <video ref={filteredVideoRef} autoPlay playsInline muted
             className={`w-full h-full object-contain absolute inset-0 transition-opacity ${hasFilteredStream && showFiltered ? "opacity-100" : "opacity-0"}`} />
         )}
 
