@@ -152,6 +152,27 @@ export default function MobileSender() {
 
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
+      // ── Audio priority: prefer Opus codec BEFORE creating the offer ──
+      // This tells WebRTC to negotiate Opus first in the SDP, giving audio
+      // the best codec and leaving video with the remaining bandwidth.
+      const audioTransceiver = pc.getTransceivers().find(
+        (t) => t.sender.track?.kind === "audio"
+      );
+      if (audioTransceiver && typeof RTCRtpSender.getCapabilities === "function") {
+        try {
+          const caps = RTCRtpSender.getCapabilities("audio");
+          if (caps) {
+            const opus = caps.codecs.filter(
+              (c) => c.mimeType.toLowerCase() === "audio/opus"
+            );
+            const rest = caps.codecs.filter(
+              (c) => c.mimeType.toLowerCase() !== "audio/opus"
+            );
+            audioTransceiver.setCodecPreferences([...opus, ...rest]);
+          }
+        } catch { /* not supported on all browsers */ }
+      }
+
       pc.onicecandidate = (event) => {
         if (event.candidate) iceCandidatesRef.current.push(event.candidate);
       };
@@ -159,6 +180,38 @@ export default function MobileSender() {
       setStatus("Preparando oferta WebRTC...");
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+
+      // ── Audio priority: set high network priority on audio sender ──
+      // Done after setLocalDescription so encoding params are available.
+      const audioSender = pc.getSenders().find((s) => s.track?.kind === "audio");
+      if (audioSender) {
+        try {
+          const params = audioSender.getParameters();
+          if (!params.encodings || params.encodings.length === 0) {
+            params.encodings = [{}];
+          }
+          // High network priority means the browser sends audio packets
+          // before video packets when bandwidth is constrained.
+          (params.encodings[0] as RTCRtpEncodingParameters & { networkPriority?: string }).networkPriority = "high";
+          params.encodings[0].priority = "high";
+          // 128 kbps minimum for clear voice; Opus default is ~32 kbps
+          params.encodings[0].maxBitrate = 128_000;
+          await audioSender.setParameters(params);
+        } catch { /* ignore — not all browsers support setParameters before connection */ }
+      }
+
+      // ── Video: cap bitrate so audio always has bandwidth headroom ──
+      const videoSender = pc.getSenders().find((s) => s.track?.kind === "video");
+      if (videoSender) {
+        try {
+          const params = videoSender.getParameters();
+          if (!params.encodings || params.encodings.length === 0) {
+            params.encodings = [{}];
+          }
+          params.encodings[0].maxBitrate = 2_500_000; // 2.5 Mbps max video
+          await videoSender.setParameters(params);
+        } catch { /* ignore */ }
+      }
 
       // Wait for ICE gathering
       await new Promise((r) => setTimeout(r, 2000));
@@ -190,6 +243,21 @@ export default function MobileSender() {
           const d = await r.json();
           if (d.success && d.type === "answer") {
             await pc.setRemoteDescription(new RTCSessionDescription(d));
+
+            // Re-apply audio priority after full negotiation — this is the
+            // point where setParameters reliably sticks on all browsers.
+            const aSender = pc.getSenders().find((s) => s.track?.kind === "audio");
+            if (aSender) {
+              try {
+                const p = aSender.getParameters();
+                if (!p.encodings || p.encodings.length === 0) p.encodings = [{}];
+                (p.encodings[0] as RTCRtpEncodingParameters & { networkPriority?: string }).networkPriority = "high";
+                p.encodings[0].priority = "high";
+                p.encodings[0].maxBitrate = 128_000;
+                await aSender.setParameters(p);
+              } catch { /* ignore */ }
+            }
+
             setIsConnected(true);
             setIsConnecting(false);
             setStatus("✅ Conectado — transmitiendo al PC en tiempo real");
