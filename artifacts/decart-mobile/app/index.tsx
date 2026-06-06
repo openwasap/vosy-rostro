@@ -41,6 +41,7 @@ if (Platform.OS !== "web") {
 const VIDEO_WIDTH = 1088;
 const VIDEO_HEIGHT = 624;
 const VIDEO_FPS = 30;
+const AUDIO_BITRATE = 64000;
 
 type ConnectionState = "idle" | "starting" | "connecting" | "connected" | "error";
 
@@ -51,6 +52,7 @@ export default function CameraScreen() {
   const [statusText, setStatusText] = useState("Listo para conectar");
   const [errorText, setErrorText] = useState("");
   const [isMuted, setIsMuted] = useState(false);
+  const [isRemoteMuted, setIsRemoteMuted] = useState(false);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
   const [streamURL, setStreamURL] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState(
@@ -62,6 +64,9 @@ export default function CameraScreen() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const icePollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const iceCandidatesRef = useRef<any[]>([]);
+  const remoteAudioRef = useRef<any>(null);
+  const remoteStreamRef = useRef<any>(null);
+  const dataChannelRef = useRef<any>(null);
 
   const apiBase = `${serverUrl}/api`;
 
@@ -162,6 +167,17 @@ export default function CameraScreen() {
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
+          { urls: "stun:stun2.l.google.com:19302" },
+          {
+            urls: "turn:openrelay.metered.ca:80",
+            username: "openrelayproject",
+            credential: "openrelayproject",
+          },
+          {
+            urls: "turn:openrelay.metered.ca:443",
+            username: "openrelayproject",
+            credential: "openrelayproject",
+          },
         ],
       });
       pcRef.current = pc;
@@ -181,16 +197,45 @@ export default function CameraScreen() {
         pc.addTrack(track, streamRef.current);
       });
 
+      pc.ontrack = (event: any) => {
+        if (event.streams && event.streams[0]) {
+          remoteStreamRef.current = event.streams[0];
+          if (remoteAudioRef.current) {
+            remoteAudioRef.current.srcObject = event.streams[0];
+            remoteAudioRef.current.play().catch(() => {});
+          }
+        }
+        if (event.track && event.track.kind === "audio") {
+          setIsRemoteMuted(false);
+        }
+      };
+
       pc.onicecandidate = (event: any) => {
         if (event.candidate) {
           iceCandidatesRef.current.push(event.candidate);
         }
       };
 
+      pc.ondatachannel = (event: any) => {
+        const channel = event.channel;
+        dataChannelRef.current = channel;
+        channel.onmessage = (e: any) => {
+          const data = JSON.parse(e.data || "{}");
+          if (data.type === "mute-changed") {
+            setIsRemoteMuted(data.muted);
+          }
+        };
+      };
+
       setConnectionState("connecting");
       setStatusText("Preparando oferta WebRTC...");
-      const offer = await pc.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: false });
+      const offer = await pc.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: true });
       await pc.setLocalDescription(offer);
+
+      const dc = pc.createDataChannel("mute-sync", { ordered: true });
+      dataChannelRef.current = dc;
+      dc.onopen = () => {};
+      dc.onerror = () => {};
 
       await new Promise((r) => setTimeout(r, 2000));
 
@@ -259,16 +304,37 @@ export default function CameraScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     pcRef.current?.close();
     pcRef.current = null;
+    remoteStreamRef.current = null;
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
     if (icePollingRef.current) { clearInterval(icePollingRef.current); icePollingRef.current = null; }
     setConnectionState("idle");
     setStatusText("Listo para conectar");
     setErrorText("");
+    setIsRemoteMuted(false);
   }, []);
+
+  const toggleRemoteMute = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (remoteStreamRef.current) {
+      const audioTracks = remoteStreamRef.current.getAudioTracks();
+      audioTracks.forEach((t: any) => {
+        t.enabled = isRemoteMuted;
+      });
+      setIsRemoteMuted(!isRemoteMuted);
+      if (dataChannelRef.current && dataChannelRef.current.readyState === "open") {
+        dataChannelRef.current.send(JSON.stringify({ type: "mute-changed", muted: !isRemoteMuted }));
+      }
+    }
+  };
 
   const stopAll = () => {
     pcRef.current?.close();
     pcRef.current = null;
+    remoteStreamRef.current = null;
+    if (dataChannelRef.current) {
+      try { dataChannelRef.current.close(); } catch {}
+      dataChannelRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t: any) => t.stop());
       streamRef.current = null;

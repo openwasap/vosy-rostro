@@ -8,6 +8,7 @@ const rooms = new Map<string, {
   name: string;
   status: string;
   createdAt: string;
+  lastActivity: number;
   mobileConnected: boolean;
   pcConnected: boolean;
   offer: any | null;
@@ -15,6 +16,26 @@ const rooms = new Map<string, {
   mobileIce: any[];
   pcIce: any[];
 }>();
+
+const ROOM_TTL_MS = 3 * 60 * 60 * 1000;
+
+function touchRoom(roomId: string) {
+  const room = rooms.get(roomId);
+  if (room) {
+    room.lastActivity = Date.now();
+  }
+}
+
+function cleanupStaleRooms() {
+  const now = Date.now();
+  for (const [id, room] of rooms) {
+    if (now - room.lastActivity > ROOM_TTL_MS) {
+      rooms.delete(id);
+    }
+  }
+}
+
+setInterval(cleanupStaleRooms, 5 * 60 * 1000);
 
 // Generate a short, easy-to-type 3-char alphanumeric ID
 // Excludes visually ambiguous chars: 0/O, 1/I/l
@@ -32,12 +53,13 @@ function generateRoomId(): string {
 router.post("/rooms", (req, res) => {
   const { name } = req.body;
   const roomId = generateRoomId();
-  
+  const now = new Date().toISOString();
   rooms.set(roomId, {
     id: roomId,
     name: name || "Sala",
     status: "waiting",
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    lastActivity: Date.now(),
     mobileConnected: false,
     pcConnected: false,
     offer: null,
@@ -45,11 +67,11 @@ router.post("/rooms", (req, res) => {
     mobileIce: [],
     pcIce: [],
   });
-  
+
   res.status(201).json({
     id: roomId,
     status: "waiting",
-    createdAt: new Date().toISOString(),
+    createdAt: now,
     mobileConnected: false,
     pcConnected: false,
   });
@@ -61,7 +83,7 @@ router.get("/rooms/:roomId", (req, res) => {
     res.status(404).json({ error: "Room not found" });
     return;
   }
-  
+
   res.json({
     id: room.id,
     status: room.status,
@@ -77,13 +99,14 @@ router.post("/rooms/:roomId/offer", (req, res) => {
     res.status(404).json({ error: "Room not found" });
     return;
   }
-  
+
   room.offer = req.body;
   room.mobileConnected = true;
+  room.lastActivity = Date.now();
   if (room.pcConnected) {
     room.status = "connected";
   }
-  
+
   res.json({ success: true, message: "Offer stored" });
 });
 
@@ -93,12 +116,12 @@ router.get("/rooms/:roomId/offer", (req, res) => {
     res.status(404).json({ error: "Room not found" });
     return;
   }
-  
+
   if (!room.offer) {
     res.json({ success: false, message: "No offer yet" });
     return;
   }
-  
+
   res.json({ success: true, message: "Offer available", ...room.offer });
 });
 
@@ -108,13 +131,14 @@ router.post("/rooms/:roomId/answer", (req, res) => {
     res.status(404).json({ error: "Room not found" });
     return;
   }
-  
+
   room.answer = req.body;
   room.pcConnected = true;
+  room.lastActivity = Date.now();
   if (room.mobileConnected) {
     room.status = "connected";
   }
-  
+
   res.json({ success: true, message: "Answer stored" });
 });
 
@@ -124,12 +148,12 @@ router.get("/rooms/:roomId/answer", (req, res) => {
     res.status(404).json({ error: "Room not found" });
     return;
   }
-  
+
   if (!room.answer) {
     res.json({ success: false, message: "No answer yet" });
     return;
   }
-  
+
   res.json({ success: true, message: "Answer available", ...room.answer });
 });
 
@@ -139,15 +163,16 @@ router.post("/rooms/:roomId/ice", (req, res) => {
     res.status(404).json({ error: "Room not found" });
     return;
   }
-  
+
   const { candidate, sdpMid, sdpMLineIndex, source } = req.body;
-  
+
   if (source === "mobile") {
     room.mobileIce.push({ candidate, sdpMid, sdpMLineIndex });
   } else {
     room.pcIce.push({ candidate, sdpMid, sdpMLineIndex });
   }
-  
+  room.lastActivity = Date.now();
+
   res.json({ success: true, message: "ICE candidate stored" });
 });
 
@@ -157,7 +182,7 @@ router.get("/rooms/:roomId/ice/mobile", (req, res) => {
     res.status(404).json({ error: "Room not found" });
     return;
   }
-  
+
   res.json({ candidates: room.mobileIce });
 });
 
@@ -167,7 +192,7 @@ router.get("/rooms/:roomId/ice/pc", (req, res) => {
     res.status(404).json({ error: "Room not found" });
     return;
   }
-  
+
   res.json({ candidates: room.pcIce });
 });
 
