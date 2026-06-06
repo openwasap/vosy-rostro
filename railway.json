@@ -1,0 +1,59 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "services": [
+    {
+      "name": "api-server",
+      "build": {
+        "builder": "NIXPACKS",
+        "buildCommand": "cd artifacts/api-server && pnpm install && pnpm run build"
+      },
+      "start": {
+        "command": "cd artifacts/api-server && node --enable-source-maps ./dist/index.mjs"
+      },
+      "env": {
+        "NODE_ENV": {
+          "required": true
+        },
+        "PORT": {
+          "required": true,
+          "default": "8080"
+        },
+        "CORS_ORIGIN": {
+          "required": false,
+          "default": "*"
+        }
+      },
+      "source": {
+        "repo": "",
+        "rootDirectory": "artifacts/api-server"
+      }
+    },
+    {
+      "name": "decart-camera",
+      "build": {
+        "builder": "NIXPACKS",
+        "buildCommand": "cd artifacts/decart-camera && pnpm install && pnpm run build"
+      },
+      "start": {
+        "command": "cd artifacts/decart-camera && pnpm run serve"
+      },
+      "env": {
+        "PORT": {
+          "required": true,
+          "default": "3000"
+        },
+        "BASE_PATH": {
+          "required": false,
+          "default": "/"
+        }
+      },
+      "source": {
+        "repo": "",
+        "rootDirectory": "artifacts/decart-camera"
+      }
+    }
+  ],
+  "variables": {
+    "NODE_ENV": "production"
+  }
+}
