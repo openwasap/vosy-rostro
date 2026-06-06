@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "Decart Camera",
+    "slug": "decart-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "decart-mobile",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.decart.mobilecamera",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Se necesita la cámara para transmitir video en tiempo real al PC con filtros Decart AI.",
+        "NSMicrophoneUsageDescription": "Se necesita el micrófono para transmitir audio en tiempo real al PC.",
+        "NSLocalNetworkUsageDescription": "Se necesita acceso a la red local para la conexión WebRTC con el PC."
+      }
+    },
+    "android": {
+      "package": "com.decart.mobilecamera",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "ACCESS_WIFI_STATE",
+        "CHANGE_NETWORK_STATE",
+        "MODIFY_AUDIO_SETTINGS"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#000000"
+      }
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

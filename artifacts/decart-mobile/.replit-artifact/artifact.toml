@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/decart-mobile/"
+title = "Decart Mobile Camera"
+version = "1.0.0"
+id = "artifacts/decart-mobile"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/decart-mobile/" ]
+localPort = 21171
+
+[services.development]
+run = "pnpm --filter @workspace/decart-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/decart-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/decart-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "21171"
+BASE_PATH = "/decart-mobile/"
